@@ -180,11 +180,87 @@ static_library("chrome") {
     "//services/strings",
   ]
 
+  # needed directly
+  sources += [
+    "//chrome/browser/policy/chrome_browser_policy_connector.cc",
+    "//chrome/browser/policy/chrome_browser_policy_connector.h",
+  ]
+
+  # from //chrome/browser, needed to avoid building the whole thing
+  sources += [
+    "//chrome/browser/policy/cbcm_invalidations_initializer.cc",
+    "//chrome/browser/policy/cbcm_invalidations_initializer.h",
+    "//chrome/browser/policy/chrome_browser_cloud_management_controller_desktop.cc",
+    "//chrome/browser/policy/chrome_browser_cloud_management_controller_desktop.h",
+    "//chrome/browser/policy/chrome_browser_cloud_management_register_watcher.cc",
+    "//chrome/browser/policy/chrome_browser_cloud_management_register_watcher.h",
+    "//chrome/browser/device_identity/device_oauth2_token_service.cc",
+    "//chrome/browser/device_identity/device_oauth2_token_service.h",
+    "//chrome/browser/device_identity/device_oauth2_token_service_factory.cc",
+    "//chrome/browser/device_identity/device_oauth2_token_service_factory.h",
+    "//chrome/browser/policy/cloud/cloud_policy_invalidator.cc",
+    "//chrome/browser/policy/cloud/cloud_policy_invalidator.h",
+    "//chrome/browser/device_identity/device_oauth2_token_store_desktop.cc",
+    "//chrome/browser/device_identity/device_oauth2_token_store_desktop.h",
+    "//chrome/browser/device_identity/device_identity_provider.cc",
+    "//chrome/browser/device_identity/device_identity_provider.h",
+    "//chrome/browser/enterprise/remote_commands/cbcm_remote_commands_factory.cc",
+    "//chrome/browser/enterprise/remote_commands/cbcm_remote_commands_factory.h",
+    "//chrome/browser/policy/browser_dm_token_storage_mac.h",
+    "//chrome/browser/policy/browser_dm_token_storage_mac.mm",
+    "//chrome/browser/enterprise/remote_commands/rotate_attestation_credential_job.cc",
+    "//chrome/browser/enterprise/remote_commands/rotate_attestation_credential_job.h",
+    "//chrome/browser/enterprise/remote_commands/clear_browsing_data_job.cc",
+    "//chrome/browser/enterprise/remote_commands/clear_browsing_data_job.h",
+    "//chrome/browser/enterprise/remote_commands/job_profile_picker.cc",
+    "//chrome/browser/enterprise/remote_commands/job_profile_picker.h",
+    "//chrome/browser/profiles/profile_manager.cc",
+    "//chrome/browser/profiles/profile_manager.h",
+    "//chrome/browser/lifetime/application_lifetime.cc",
+    "//chrome/browser/lifetime/application_lifetime.h",
+    "//chrome/browser/lifetime/application_lifetime_desktop.cc",
+    "//chrome/browser/lifetime/application_lifetime_desktop.h",
+    "//chrome/browser/lifetime/browser_shutdown.cc",
+    "//chrome/browser/lifetime/browser_shutdown.h",
+    "//chrome/browser/sessions/session_data_service.cc",
+    "//chrome/browser/sessions/session_data_service.h",
+    "//chrome/browser/sessions/exit_type_service.cc",
+    "//chrome/browser/sessions/exit_type_service.h",
+    "//chrome/browser/sessions/exit_type_service_factory.cc",
+    "//chrome/browser/sessions/exit_type_service_factory.h",
+    "//chrome/browser/download/download_core_service.cc",
+    "//chrome/browser/download/download_core_service.h",
+    "//chrome/browser/sessions/session_restore.cc",
+    "//chrome/browser/sessions/session_restore.h",
+    "//chrome/browser/app_controller_mac.h",
+    "//chrome/browser/app_controller_mac.mm",
+  ]
+  
+  # from //chrome/browser/ui
+
+  # sources += [
+  #   "//chrome/browser/ui/tabs/tab_strip_model.cc",
+  #   "//chrome/browser/ui/tabs/tab_strip_model.h",
+  #   "//chrome/browser/ui/tabs/tab_strip_model_observer.cc",
+  #   "//chrome/browser/ui/tabs/tab_strip_model_observer.h",
+  # ]
+
   deps = [
     "//chrome/app/vector_icons",
     "//chrome/browser:resource_prefetch_predictor_proto",
     "//chrome/browser/resource_coordinator:mojo_bindings",
     "//chrome/browser/web_applications/mojom:mojom_web_apps_enum",
+    "//components/enterprise",
+    "//components/enterprise/connectors",
+    "//chrome/browser/enterprise/connectors/device_trust/key_management/browser",
+    "//chrome/browser/enterprise/connectors/device_trust:features",
+    "//components/policy/core/common",
+    "//components/policy/core/browser",
+    "//chrome/browser/web_applications/proto",
+    "//chrome/browser/ui",
+    "//components/saved_tab_groups/proto",
+    "//components/webapps/services/web_app_origin_association/public/mojom",
+    "//components/webapps/common:mojo_bindings",
     "//components/enterprise/buildflags",
     "//components/enterprise/common/proto:connectors_proto",
     "//components/safe_browsing/core/browser/db:safebrowsing_proto",

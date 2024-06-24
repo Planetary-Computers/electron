@@ -15,6 +15,7 @@
 
 #include "base/command_line.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "components/embedder_support/origin_trials/origin_trials_settings_storage.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/value_map_pref_store.h"
@@ -160,6 +161,7 @@ class BrowserProcessImpl : public BrowserProcess {
       network_quality_observer_;
 
   std::unique_ptr<os_crypt_async::OSCryptAsync> os_crypt_async_;
+  std::unique_ptr<policy::ChromeBrowserPolicyConnector> browser_policy_connector_;
 };
 
 #endif  // ELECTRON_SHELL_BROWSER_BROWSER_PROCESS_IMPL_H_

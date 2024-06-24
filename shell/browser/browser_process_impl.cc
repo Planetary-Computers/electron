@@ -45,7 +45,8 @@
 #include "chrome/browser/printing/print_job_manager.h"
 #endif
 
-BrowserProcessImpl::BrowserProcessImpl() {
+BrowserProcessImpl::BrowserProcessImpl()
+    : browser_policy_connector_(std::make_unique<policy::ChromeBrowserPolicyConnector>()) {
   g_browser_process = this;
 }
 
@@ -208,7 +209,7 @@ BrowserProcessImpl::GetOriginTrialsSettingsStorage() {
 
 policy::ChromeBrowserPolicyConnector*
 BrowserProcessImpl::browser_policy_connector() {
-  return nullptr;
+  return browser_policy_connector_.get();
 }
 
 policy::PolicyService* BrowserProcessImpl::policy_service() {
