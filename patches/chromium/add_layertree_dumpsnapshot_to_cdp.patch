@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Izzy Swart <zenerboson@gmail.com>
-Date: Wed, 26 Jun 2024 15:09:21 -0400
+Date: Thu, 27 Jun 2024 10:33:38 -0400
 Subject: Add LayerTree.dumpSnapshot to CDP
 
 
@@ -70,7 +70,7 @@ index f9f9633179ae10952263807d886db5ab11816312..478892e0bc22ffa13361361c7ac317d9
    protocol::Response profileSnapshot(
        const String& snapshot_id,
 diff --git a/third_party/blink/renderer/platform/graphics/picture_snapshot.cc b/third_party/blink/renderer/platform/graphics/picture_snapshot.cc
-index 18ca84dd1d952a4614de9ef4607fb44ead96b127..3b0936e7818962c23ed168afa64e4a1512a404b5 100644
+index 18ca84dd1d952a4614de9ef4607fb44ead96b127..403372c14d3c603d3990ac72eaa4923443a6ec30 100644
 --- a/third_party/blink/renderer/platform/graphics/picture_snapshot.cc
 +++ b/third_party/blink/renderer/platform/graphics/picture_snapshot.cc
 @@ -42,6 +42,9 @@
@@ -105,7 +105,7 @@ index 18ca84dd1d952a4614de9ef4607fb44ead96b127..3b0936e7818962c23ed168afa64e4a15
 +  }
 +  sk_sp<SkData> skData = picture_->serialize(&sProcs);
 +  Vector<uint8_t> result;
-+  result.Grow(skData->size());
++  result.Grow(static_cast<wtf_size_t>(skData->size()));
 +  memcpy(result.data(), skData->bytes(), skData->size());
 +  return result;
 +}
