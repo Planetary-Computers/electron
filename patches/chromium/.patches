@@ -142,4 +142,4 @@ cherry-pick-013961609785.patch
 a11y_avoid_clearing_resetting_focus_on_an_already_focus_event.patch
 cherry-pick-b2cc7b7ac538.patch
 add_layertree_dumpsnapshot_to_cdp.patch
-support_for_external_font_interning.patch
+cdp_support_for_image_filtering.patch

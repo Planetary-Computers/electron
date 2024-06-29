@@ -1,0 +1,559 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Izzy Swart <zenerboson@gmail.com>
+Date: Sat, 29 Jun 2024 18:41:20 -0400
+Subject: CDP support for image filtering
+
+
+diff --git a/third_party/blink/public/devtools_protocol/browser_protocol.pdl b/third_party/blink/public/devtools_protocol/browser_protocol.pdl
+index 99d56ff068a67eb6cb4fd35727dfbd4c99261354..123c6e48212adedf713e5008892d0526084fdef6 100644
+--- a/third_party/blink/public/devtools_protocol/browser_protocol.pdl
++++ b/third_party/blink/public/devtools_protocol/browser_protocol.pdl
+@@ -5073,10 +5073,10 @@ experimental domain LayerTree
+     parameters
+       # The id of the layer snapshot.
+       SnapshotId snapshotId
+-      # Whether to skip serializing typefaces
+-      optional boolean skipTypefaces
+-      # Whether to skip serializing images
+-      optional boolean skipImages
++      # Include only typefaces with these ids
++      optional array of integer typefaceFilter
++      # Include only images with these ids
++      optional array of integer imageFilter
+     returns
+       # A serialized SkPicture object.
+       binary picture
+diff --git a/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc b/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
+index d1f49ea43746c2fe7411fd45838c8e529b902ada..2668bb7af70ab2d419a84fc3850472c9f3b13fbc 100644
+--- a/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
++++ b/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
+@@ -130,19 +130,22 @@ BuildScrollRectsForLayer(const cc::Layer* layer) {
+ // property tree once blink is able to access them. https://crbug.com/754339
+ static const cc::Layer* FindLayerByElementId(const cc::Layer* root,
+                                              CompositorElementId element_id) {
+-  if (root->element_id() == element_id)
++  if (root->element_id() == element_id) {
+     return root;
++  }
+   for (auto child : root->children()) {
+-    if (const auto* layer = FindLayerByElementId(child.get(), element_id))
++    if (const auto* layer = FindLayerByElementId(child.get(), element_id)) {
+       return layer;
++    }
+   }
+   return nullptr;
+ }
+ 
+ static std::unique_ptr<protocol::LayerTree::StickyPositionConstraint>
+ BuildStickyInfoForLayer(const cc::Layer* root, const cc::Layer* layer) {
+-  if (!layer->has_transform_node())
++  if (!layer->has_transform_node()) {
+     return nullptr;
++  }
+   // Note that we'll miss the sticky transform node if multiple transform nodes
+   // apply to the layer.
+   const cc::StickyPositionNodeData* sticky_data =
+@@ -150,8 +153,9 @@ BuildStickyInfoForLayer(const cc::Layer* root, const cc::Layer* layer) {
+           ->property_trees()
+           ->transform_tree()
+           .GetStickyPositionData(layer->transform_tree_index());
+-  if (!sticky_data)
++  if (!sticky_data) {
+     return nullptr;
++  }
+   const cc::StickyPositionConstraint& constraints = sticky_data->constraints;
+ 
+   std::unique_ptr<protocol::DOM::Rect> sticky_box_rect =
+@@ -170,16 +174,18 @@ BuildStickyInfoForLayer(const cc::Layer* root, const cc::Layer* layer) {
+   if (constraints.nearest_element_shifting_sticky_box) {
+     const cc::Layer* constraint_layer = FindLayerByElementId(
+         root, constraints.nearest_element_shifting_sticky_box);
+-    if (!constraint_layer)
++    if (!constraint_layer) {
+       return nullptr;
++    }
+     constraints_obj->setNearestLayerShiftingStickyBox(
+         String::Number(constraint_layer->id()));
+   }
+   if (constraints.nearest_element_shifting_containing_block) {
+     const cc::Layer* constraint_layer = FindLayerByElementId(
+         root, constraints.nearest_element_shifting_containing_block);
+-    if (!constraint_layer)
++    if (!constraint_layer) {
+       return nullptr;
++    }
+     constraints_obj->setNearestLayerShiftingContainingBlock(
+         String::Number(constraint_layer->id()));
+   }
+@@ -212,12 +218,14 @@ static std::unique_ptr<protocol::LayerTree::Layer> BuildObjectForLayer(
+           .build();
+ 
+   if (layer->debug_info()) {
+-    if (auto node_id = layer->debug_info()->owner_node_id)
++    if (auto node_id = layer->debug_info()->owner_node_id) {
+       layer_object->setBackendNodeId(node_id);
++    }
+   }
+ 
+-  if (const auto* parent = layer->parent())
++  if (const auto* parent = layer->parent()) {
+     layer_object->setParentLayerId(IdForLayer(parent));
++  }
+ 
+   gfx::Transform transform = layer->ScreenSpaceTransform();
+ 
+@@ -234,12 +242,14 @@ static std::unique_ptr<protocol::LayerTree::Layer> BuildObjectForLayer(
+   }
+   std::unique_ptr<Array<protocol::LayerTree::ScrollRect>> scroll_rects =
+       BuildScrollRectsForLayer(layer);
+-  if (scroll_rects)
++  if (scroll_rects) {
+     layer_object->setScrollRects(std::move(scroll_rects));
++  }
+   std::unique_ptr<protocol::LayerTree::StickyPositionConstraint> sticky_info =
+       BuildStickyInfoForLayer(root, layer);
+-  if (sticky_info)
++  if (sticky_info) {
+     layer_object->setStickyPositionConstraint(std::move(sticky_info));
++  }
+   return layer_object;
+ }
+ 
+@@ -294,8 +304,9 @@ void InspectorLayerTreeAgent::LayerTreePainted() {
+ std::unique_ptr<Array<protocol::LayerTree::Layer>>
+ InspectorLayerTreeAgent::BuildLayerTree() {
+   const auto* root_layer = RootLayer();
+-  if (!root_layer)
++  if (!root_layer) {
+     return nullptr;
++  }
+ 
+   auto layers = std::make_unique<protocol::Array<protocol::LayerTree::Layer>>();
+   GatherLayers(root_layer, layers);
+@@ -305,13 +316,16 @@ InspectorLayerTreeAgent::BuildLayerTree() {
+ void InspectorLayerTreeAgent::GatherLayers(
+     const cc::Layer* layer,
+     std::unique_ptr<Array<protocol::LayerTree::Layer>>& layers) {
+-  if (client_->IsInspectorLayer(layer))
++  if (client_->IsInspectorLayer(layer)) {
+     return;
+-  if (layer->layer_tree_host()->is_hud_layer(layer))
++  }
++  if (layer->layer_tree_host()->is_hud_layer(layer)) {
+     return;
++  }
+   layers->emplace_back(BuildObjectForLayer(RootLayer(), layer));
+-  for (auto child : layer->children())
++  for (auto child : layer->children()) {
+     GatherLayers(child.get(), layers);
++  }
+ }
+ 
+ const cc::Layer* InspectorLayerTreeAgent::RootLayer() {
+@@ -319,13 +333,16 @@ const cc::Layer* InspectorLayerTreeAgent::RootLayer() {
+ }
+ 
+ static const cc::Layer* FindLayerById(const cc::Layer* root, int layer_id) {
+-  if (!root)
++  if (!root) {
+     return nullptr;
+-  if (root->id() == layer_id)
++  }
++  if (root->id() == layer_id) {
+     return root;
++  }
+   for (auto child : root->children()) {
+-    if (const auto* layer = FindLayerById(child.get(), layer_id))
++    if (const auto* layer = FindLayerById(child.get(), layer_id)) {
+       return layer;
++    }
+   }
+   return nullptr;
+ }
+@@ -335,12 +352,14 @@ protocol::Response InspectorLayerTreeAgent::LayerById(
+     const cc::Layer*& result) {
+   bool ok;
+   int id = layer_id.ToInt(&ok);
+-  if (!ok)
++  if (!ok) {
+     return protocol::Response::ServerError("Invalid layer id");
++  }
+ 
+   result = FindLayerById(RootLayer(), id);
+-  if (!result)
++  if (!result) {
+     return protocol::Response::ServerError("No layer matching given id found");
++  }
+   return protocol::Response::Success();
+ }
+ 
+@@ -350,8 +369,9 @@ protocol::Response InspectorLayerTreeAgent::compositingReasons(
+     std::unique_ptr<Array<String>>* compositing_reason_ids) {
+   const cc::Layer* layer = nullptr;
+   protocol::Response response = LayerById(layer_id, layer);
+-  if (!response.IsSuccess())
++  if (!response.IsSuccess()) {
+     return response;
++  }
+   *compositing_reasons = std::make_unique<protocol::Array<String>>();
+   *compositing_reason_ids = std::make_unique<protocol::Array<String>>();
+   if (layer->debug_info()) {
+@@ -378,8 +398,9 @@ protocol::Response InspectorLayerTreeAgent::makeSnapshot(const String& layer_id,
+   if (inspected_frames_->Root()->GetDocument() && inspected_frames_->Root()
+                                                       ->GetDocument()
+                                                       ->Lifecycle()
+-                                                      .LifecyclePostponed())
++                                                      .LifecyclePostponed()) {
+     return protocol::Response::ServerError("Layer does not draw content");
++  }
+ 
+   inspected_frames_->Root()->View()->UpdateAllLifecyclePhases(
+       DocumentUpdateReason::kInspector);
+@@ -388,14 +409,17 @@ protocol::Response InspectorLayerTreeAgent::makeSnapshot(const String& layer_id,
+ 
+   const cc::Layer* layer = nullptr;
+   protocol::Response response = LayerById(layer_id, layer);
+-  if (!response.IsSuccess())
++  if (!response.IsSuccess()) {
+     return response;
+-  if (!layer->draws_content())
++  }
++  if (!layer->draws_content()) {
+     return protocol::Response::ServerError("Layer does not draw content");
++  }
+ 
+   auto picture = layer->GetPicture();
+-  if (!picture)
++  if (!picture) {
+     return protocol::Response::ServerError("Layer does not produce picture");
++  }
+ 
+   auto snapshot = base::MakeRefCounted<PictureSnapshot>(std::move(picture));
+   *snapshot_id = String::Number(++last_snapshot_id_);
+@@ -428,10 +452,12 @@ protocol::Response InspectorLayerTreeAgent::loadSnapshot(
+   }
+   scoped_refptr<PictureSnapshot> snapshot =
+       PictureSnapshot::Load(decoded_tiles);
+-  if (!snapshot)
++  if (!snapshot) {
+     return protocol::Response::ServerError("Invalid snapshot format");
+-  if (snapshot->IsEmpty())
++  }
++  if (snapshot->IsEmpty()) {
+     return protocol::Response::ServerError("Empty snapshot");
++  }
+ 
+   *snapshot_id = String::Number(++last_snapshot_id_);
+   bool new_entry = snapshot_by_id_.insert(*snapshot_id, snapshot).is_new_entry;
+@@ -441,15 +467,32 @@ protocol::Response InspectorLayerTreeAgent::loadSnapshot(
+ 
+ protocol::Response InspectorLayerTreeAgent::dumpSnapshot(
+     const String& snapshot_id,
+-    Maybe<bool> skip_typefaces,
+-    Maybe<bool> skip_images,
++    Maybe<protocol::Array<int>> typeface_filter,
++    Maybe<protocol::Array<int>> image_filter,
+     protocol::Binary* picture) {
+   const PictureSnapshot* snapshot = nullptr;
+   protocol::Response response = GetSnapshotById(snapshot_id, snapshot);
+-  if (!response.IsSuccess())
++  if (!response.IsSuccess()) {
+     return response;
+-  Vector<uint8_t> data = snapshot->Dump(skip_typefaces.value_or(false),
+-                                       skip_images.value_or(false));
++  }
++
++  Vector<uint32_t> typeface_filter_ids;
++  if (typeface_filter.has_value()) {
++    for (int id : *typeface_filter) {
++      typeface_filter_ids.push_back(static_cast<uint32_t>(id));
++    }
++  }
++
++  Vector<uint32_t> image_filter_ids;
++  if (image_filter.has_value()) {
++    for (int id : *image_filter) {
++      image_filter_ids.push_back(static_cast<uint32_t>(id));
++    }
++  }
++
++  Vector<uint8_t> data =
++      snapshot->Dump(typeface_filter.has_value(), typeface_filter_ids,
++                     image_filter.has_value(), image_filter_ids);
+   *picture = protocol::Binary::fromVector(data);
+   return protocol::Response::Success();
+ }
+@@ -457,8 +500,9 @@ protocol::Response InspectorLayerTreeAgent::dumpSnapshot(
+ protocol::Response InspectorLayerTreeAgent::releaseSnapshot(
+     const String& snapshot_id) {
+   SnapshotById::iterator it = snapshot_by_id_.find(snapshot_id);
+-  if (it == snapshot_by_id_.end())
++  if (it == snapshot_by_id_.end()) {
+     return protocol::Response::ServerError("Snapshot not found");
++  }
+   snapshot_by_id_.erase(it);
+   return protocol::Response::Success();
+ }
+@@ -467,8 +511,9 @@ protocol::Response InspectorLayerTreeAgent::GetSnapshotById(
+     const String& snapshot_id,
+     const PictureSnapshot*& result) {
+   SnapshotById::iterator it = snapshot_by_id_.find(snapshot_id);
+-  if (it == snapshot_by_id_.end())
++  if (it == snapshot_by_id_.end()) {
+     return protocol::Response::ServerError("Snapshot not found");
++  }
+   result = it->value.get();
+   return protocol::Response::Success();
+ }
+@@ -481,12 +526,14 @@ protocol::Response InspectorLayerTreeAgent::replaySnapshot(
+     String* data_url) {
+   const PictureSnapshot* snapshot = nullptr;
+   protocol::Response response = GetSnapshotById(snapshot_id, snapshot);
+-  if (!response.IsSuccess())
++  if (!response.IsSuccess()) {
+     return response;
++  }
+   auto png_data = snapshot->Replay(from_step.value_or(0), to_step.value_or(0),
+                                    scale.value_or(1.0));
+-  if (png_data.empty())
++  if (png_data.empty()) {
+     return protocol::Response::ServerError("Image encoding failed");
++  }
+   *data_url = "data:image/png;base64," + Base64Encode(png_data);
+   return protocol::Response::Success();
+ }
+@@ -504,8 +551,9 @@ protocol::Response InspectorLayerTreeAgent::profileSnapshot(
+     std::unique_ptr<protocol::Array<protocol::Array<double>>>* out_timings) {
+   const PictureSnapshot* snapshot = nullptr;
+   protocol::Response response = GetSnapshotById(snapshot_id, snapshot);
+-  if (!response.IsSuccess())
++  if (!response.IsSuccess()) {
+     return response;
++  }
+   gfx::RectF rect;
+   if (clip_rect.has_value()) {
+     ParseRect(clip_rect.value(), &rect);
+@@ -516,8 +564,9 @@ protocol::Response InspectorLayerTreeAgent::profileSnapshot(
+   *out_timings = std::make_unique<Array<Array<double>>>();
+   for (const auto& row : timings) {
+     auto out_row = std::make_unique<protocol::Array<double>>();
+-    for (base::TimeDelta delta : row)
++    for (base::TimeDelta delta : row) {
+       out_row->emplace_back(delta.InSecondsF());
++    }
+     (*out_timings)->emplace_back(std::move(out_row));
+   }
+   return protocol::Response::Success();
+@@ -528,8 +577,9 @@ protocol::Response InspectorLayerTreeAgent::snapshotCommandLog(
+     std::unique_ptr<Array<protocol::DictionaryValue>>* command_log) {
+   const PictureSnapshot* snapshot = nullptr;
+   protocol::Response response = GetSnapshotById(snapshot_id, snapshot);
+-  if (!response.IsSuccess())
++  if (!response.IsSuccess()) {
+     return response;
++  }
+   protocol::ErrorSupport errors;
+   const String& json = snapshot->SnapshotCommandLog()->ToJSONString();
+   std::vector<uint8_t> cbor;
+@@ -548,8 +598,9 @@ protocol::Response InspectorLayerTreeAgent::snapshotCommandLog(
+       protocol::Array<protocol::DictionaryValue>>::fromValue(log_value.get(),
+                                                              &errors);
+   auto err = errors.Errors();
+-  if (err.empty())
++  if (err.empty()) {
+     return protocol::Response::Success();
++  }
+   return protocol::Response::ServerError(std::string(err.begin(), err.end()));
+ }
+ 
+diff --git a/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.h b/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.h
+index 478892e0bc22ffa13361361c7ac317d91ee7b62b..0b2feaeb16ae7fa9ef7fbd2381e25af900e32d5e 100644
+--- a/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.h
++++ b/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.h
+@@ -80,9 +80,10 @@ class CORE_EXPORT InspectorLayerTreeAgent final
+   protocol::Response loadSnapshot(
+       std::unique_ptr<protocol::Array<protocol::LayerTree::PictureTile>> tiles,
+       String* snapshot_id) override;
+-  protocol::Response dumpSnapshot(const String& snapshot_id,
+-      protocol::Maybe<bool> skip_typefaces,
+-      protocol::Maybe<bool> skip_images,
++  protocol::Response dumpSnapshot(
++      const String& snapshot_id,
++      protocol::Maybe<protocol::Array<int>> typeface_filter,
++      protocol::Maybe<protocol::Array<int>> image_filter,
+       protocol::Binary* picture) override;
+   protocol::Response releaseSnapshot(const String& snapshot_id) override;
+   protocol::Response profileSnapshot(
+diff --git a/third_party/blink/renderer/platform/graphics/picture_snapshot.cc b/third_party/blink/renderer/platform/graphics/picture_snapshot.cc
+index 403372c14d3c603d3990ac72eaa4923443a6ec30..1d62442ed45b78cecda0a3551cfad2b75939641e 100644
+--- a/third_party/blink/renderer/platform/graphics/picture_snapshot.cc
++++ b/third_party/blink/renderer/platform/graphics/picture_snapshot.cc
+@@ -31,6 +31,8 @@
+ #include "third_party/blink/renderer/platform/graphics/picture_snapshot.h"
+ 
+ #include <memory>
++#include "base/containers/flat_map.h"
++#include "base/containers/flat_set.h"
+ #include "base/time/time.h"
+ #include "third_party/blink/renderer/platform/graphics/logging_canvas.h"
+ #include "third_party/blink/renderer/platform/graphics/profiling_canvas.h"
+@@ -40,15 +42,19 @@
+ #include "third_party/blink/renderer/platform/image-decoders/segment_reader.h"
+ #include "third_party/blink/renderer/platform/image-encoders/image_encoder.h"
+ #include "third_party/blink/renderer/platform/wtf/text/text_encoding.h"
++#include "third_party/skia/include/core/SkData.h"
+ #include "third_party/skia/include/core/SkImage.h"
+ #include "third_party/skia/include/core/SkPictureRecorder.h"
+ #include "third_party/skia/include/core/SkSerialProcs.h"
+-#include "third_party/skia/include/core/SkData.h"
++#include "third_party/skia/include/core/SkString.h"
+ #include "third_party/skia/include/core/SkTypeface.h"
+ #include "ui/gfx/geometry/rect_f.h"
+ #include "ui/gfx/geometry/size.h"
+ #include "ui/gfx/geometry/skia_conversions.h"
+ 
++using TypefaceSerializationContext = base::flat_set<uint32_t>;
++using ImageSerializationContext = base::flat_set<uint32_t>;
++
+ namespace blink {
+ 
+ PictureSnapshot::PictureSnapshot(sk_sp<const SkPicture> picture)
+@@ -62,15 +68,17 @@ scoped_refptr<PictureSnapshot> PictureSnapshot::Load(
+   gfx::RectF union_rect;
+   for (const auto& tile_stream : tiles) {
+     sk_sp<SkPicture> picture = std::move(tile_stream->picture);
+-    if (!picture)
++    if (!picture) {
+       return nullptr;
++    }
+     gfx::RectF cull_rect = gfx::SkRectToRectF(picture->cullRect());
+     cull_rect.Offset(tile_stream->layer_offset.OffsetFromOrigin());
+     union_rect.Union(cull_rect);
+     pictures.push_back(std::move(picture));
+   }
+-  if (tiles.size() == 1)
++  if (tiles.size() == 1) {
+     return base::AdoptRef(new PictureSnapshot(std::move(pictures[0])));
++  }
+   SkPictureRecorder recorder;
+   SkCanvas* canvas =
+       recorder.beginRecording(union_rect.width(), union_rect.height());
+@@ -123,8 +131,9 @@ Vector<uint8_t> PictureSnapshot::Replay(unsigned from_step,
+   SkPngEncoder::Options options;
+   options.fFilterFlags = SkPngEncoder::FilterFlag::kSub;
+   options.fZLibLevel = 3;
+-  if (!ImageEncoder::Encode(&encoded_image, src, options))
++  if (!ImageEncoder::Encode(&encoded_image, src, options)) {
+     return Vector<uint8_t>();
++  }
+ 
+   return encoded_image;
+ }
+@@ -145,8 +154,9 @@ Vector<Vector<base::TimeDelta>> PictureSnapshot::Profile(
+   base::TimeTicks stop_time = now + min_duration;
+   for (unsigned step = 0; step < min_repeat_count || now < stop_time; ++step) {
+     Vector<base::TimeDelta> current_timings;
+-    if (!timings.empty())
++    if (!timings.empty()) {
+       current_timings.ReserveInitialCapacity(timings.front().size());
++    }
+     ProfilingCanvas canvas(bitmap);
+     if (clip_rect) {
+       canvas.clipRect(SkRect::MakeXYWH(clip_rect->x(), clip_rect->y(),
+@@ -168,26 +178,64 @@ std::unique_ptr<JSONArray> PictureSnapshot::SnapshotCommandLog() const {
+   return canvas.Log();
+ }
+ 
+-sk_sp<SkData> nullTypefaceProc(SkTypeface* typeface, void* context) {
+-  return typeface->serialize(SkTypeface::SerializeBehavior::kDontIncludeData);
+-}
+-
+-sk_sp<SkData> nullImageProc(SkImage* typeface, void* context) {
+-  return SkData::MakeEmpty();
+-}
+-
+-Vector<uint8_t> PictureSnapshot::Dump(bool skip_typefaces, bool skip_images) const {
++Vector<uint8_t> PictureSnapshot::Dump(bool filter_typefaces,
++                                      Vector<uint32_t> typeface_filter,
++                                      bool filter_images,
++                                      Vector<uint32_t> image_filter) const {
++  TypefaceSerializationContext typeface_filter_set(typeface_filter.begin(),
++                                                   typeface_filter.end());
++  ImageSerializationContext image_filter_set(image_filter.begin(),
++                                             image_filter.end());
+   SkSerialProcs sProcs;
+-  if (skip_typefaces) {
+-    sProcs.fTypefaceProc = nullTypefaceProc;
++  if (filter_typefaces) {
++    sProcs.fTypefaceCtx = &typeface_filter_set;
++    sProcs.fTypefaceProc = [](SkTypeface* typeface, void* context) {
++      auto* typeface_filter_set =
++          reinterpret_cast<TypefaceSerializationContext*>(context);
++      SkDynamicMemoryWStream stream;
++      uint32_t id = typeface->uniqueID();
++      stream.write32(id);
++      if (typeface_filter_set->find(id) != typeface_filter_set->end()) {
++        stream.writeBool(true);
++        typeface->serialize(&stream,
++                            SkTypeface::SerializeBehavior::kDoIncludeData);
++        typeface_filter_set->erase(id);
++      } else {
++        stream.writeBool(false);
++      }
++      return stream.detachAsData();
++    };
+   }
+-  if (skip_images) {
+-    sProcs.fImageProc = nullImageProc;
++  if (filter_images) {
++    sProcs.fImageCtx = &image_filter_set;
++    sProcs.fImageProc = [](SkImage* image, void* context) {
++      auto* image_filter_set =
++          reinterpret_cast<ImageSerializationContext*>(context);
++      SkDynamicMemoryWStream stream;
++      uint32_t id = image->uniqueID();
++      stream.write32(id);
++      if (image_filter_set->find(id) == image_filter_set->end()) {
++        stream.writeBool(false);
++        return stream.detachAsData();
++      }
++      sk_sp<SkData> data = image->refEncodedData();
++      if (!data || data->size() > std::numeric_limits<uint32_t>::max()) {
++        stream.writeBool(false);
++      } else {
++        stream.writeBool(true);
++        stream.write32(static_cast<uint32_t>(data->size()));
++        stream.write(data->data(), data->size());
++      }
++      if (image_filter_set->find(id) != image_filter_set->end()) {
++        image_filter_set->erase(id);
++      }
++      return stream.detachAsData();
++    };
+   }
+-  sk_sp<SkData> skData = picture_->serialize(&sProcs);
++  sk_sp<SkData> data = picture_->serialize(&sProcs);
+   Vector<uint8_t> result;
+-  result.Grow(static_cast<wtf_size_t>(skData->size()));
+-  memcpy(result.data(), skData->bytes(), skData->size());
++  result.Grow(static_cast<wtf_size_t>(data->size()));
++  memcpy(result.data(), data->bytes(), data->size());
+   return result;
+ }
+ 
+diff --git a/third_party/blink/renderer/platform/graphics/picture_snapshot.h b/third_party/blink/renderer/platform/graphics/picture_snapshot.h
+index 39d6824d13252096aa14b5401b4c4cab8cbd8b7e..9ee8eae29b7fcfdebfd151bcfa2983635d83d486 100644
+--- a/third_party/blink/renderer/platform/graphics/picture_snapshot.h
++++ b/third_party/blink/renderer/platform/graphics/picture_snapshot.h
+@@ -72,7 +72,10 @@ class PLATFORM_EXPORT PictureSnapshot : public RefCounted<PictureSnapshot> {
+                                           base::TimeDelta min_duration,
+                                           const gfx::RectF* clip_rect) const;
+   std::unique_ptr<JSONArray> SnapshotCommandLog() const;
+-  Vector<uint8_t> Dump(bool skip_typefaces, bool skip_images) const;
++  Vector<uint8_t> Dump(bool filter_typefaces,
++                       Vector<uint32_t> typeface_filter,
++                       bool filter_images,
++                       Vector<uint32_t> image_filter) const;
+   bool IsEmpty() const;
+ 
+  private:
