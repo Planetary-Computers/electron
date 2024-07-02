@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Izzy Swart <zenerboson@gmail.com>
+Date: Tue, 2 Jul 2024 15:27:01 -0400
+Subject: Correct scroll clip output from CDP
+
+
+diff --git a/third_party/blink/public/devtools_protocol/browser_protocol.pdl b/third_party/blink/public/devtools_protocol/browser_protocol.pdl
+index cd79042d4ecdd3ee08818f805c344ec3093018ed..7426f5a0e2012eaa1ffedf0641ec62005e3dd268 100644
+--- a/third_party/blink/public/devtools_protocol/browser_protocol.pdl
++++ b/third_party/blink/public/devtools_protocol/browser_protocol.pdl
+@@ -5029,8 +5029,12 @@ experimental domain LayerTree
+       optional array of ScrollRect scrollRects
+       # Sticky position constraint information
+       optional StickyPositionConstraint stickyPositionConstraint
+-      # Clip rect for scroll container
+-      optional DOM.Rect scrollClipRect
++      # Clip rect
++      optional DOM.Rect clipRect
++      # Scroll offset X
++      optional number scrollX
++      # Scroll offset Y
++      optional number scrollY
+ 
+   # Array of timings, one per paint step.
+   type PaintProfile extends array of number
+diff --git a/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc b/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
+index 47c74dad25f2c9866b63a295efe2d2b0226b70b8..cc536126d54f103732abca2b89bad59010382e37 100644
+--- a/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
++++ b/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
+@@ -250,19 +250,32 @@ static std::unique_ptr<protocol::LayerTree::Layer> BuildObjectForLayer(
+   if (sticky_info) {
+     layer_object->setStickyPositionConstraint(std::move(sticky_info));
+   }
++  auto clipTreeIndex = layer->clip_tree_index();
++  if (clipTreeIndex != cc::kInvalidNodeId) {
++    const cc::ClipTree& clipTree =
++        root->layer_tree_host()->property_trees()->clip_tree();
++    const cc::ClipNode* clip_node = clipTree.Node(clipTreeIndex);
++
++    if (clip_node->AppliesLocalClip() &&
++        clip_node->transform_id != cc::kInvalidPropertyNodeId) {
++      gfx::RectF clipRect = clip_node->cached_accumulated_rect_in_screen_space;
++      layer_object->setClipRect(protocol::DOM::Rect::create()
++                                    .setX(clipRect.x())
++                                    .setY(clipRect.y())
++                                    .setHeight(clipRect.height())
++                                    .setWidth(clipRect.width())
++                                    .build());
++    }
++  }
+   auto scrollTreeIndex = layer->scroll_tree_index();
+   if (scrollTreeIndex != cc::kInvalidNodeId) {
+     const cc::ScrollTree& scrollTree =
+         root->layer_tree_host()->property_trees()->scroll_tree();
+-    auto elementId = scrollTree.Node(scrollTreeIndex)->element_id;
+-    auto offset = scrollTree.current_scroll_offset(elementId);
+-    gfx::Size containerBounds = scrollTree.container_bounds(scrollTreeIndex);
+-    layer_object->setScrollClipRect(protocol::DOM::Rect::create()
+-                                        .setX(offset.x())
+-                                        .setY(offset.y())
+-                                        .setHeight(containerBounds.height())
+-                                        .setWidth(containerBounds.width())
+-                                        .build());
++    const cc::ScrollNode* scroll_node = scrollTree.Node(scrollTreeIndex);
++    gfx::PointF scrollOffset =
++        scrollTree.current_scroll_offset(scroll_node->element_id);
++    layer_object->setScrollX(scrollOffset.x());
++    layer_object->setScrollY(scrollOffset.y());
+   }
+   return layer_object;
+ }
+@@ -406,9 +419,9 @@ protocol::Response InspectorLayerTreeAgent::makeSnapshot(const String& layer_id,
+                                                          String* snapshot_id) {
+   suppress_layer_paint_events_ = true;
+ 
+-  // If we hit a devtool break point in the middle of document lifecycle, for
+-  // example, https://crbug.com/788219, this will prevent crash when clicking
+-  // the "layer" panel.
++  // If we hit a devtool break point in the middle of document lifecycle,
++  // for example, https://crbug.com/788219, this will prevent crash when
++  // clicking the "layer" panel.
+   if (inspected_frames_->Root()->GetDocument() && inspected_frames_->Root()
+                                                       ->GetDocument()
+                                                       ->Lifecycle()
