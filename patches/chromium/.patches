@@ -145,3 +145,4 @@ add_layertree_dumpsnapshot_to_cdp.patch
 cdp_support_for_image_filtering.patch
 provide_scroll_rect_information.patch
 correct_scroll_clip_output_from_cdp.patch
+expose_opacity_information_in_layertree.patch

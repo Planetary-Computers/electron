@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Izzy Swart <zenerboson@gmail.com>
+Date: Sat, 13 Jul 2024 15:14:56 -0400
+Subject: Expose opacity information in LayerTree
+
+
+diff --git a/third_party/blink/public/devtools_protocol/browser_protocol.pdl b/third_party/blink/public/devtools_protocol/browser_protocol.pdl
+index 7426f5a0e2012eaa1ffedf0641ec62005e3dd268..c48f46c176b41f8e35c02010cfc190db3dd03a6c 100644
+--- a/third_party/blink/public/devtools_protocol/browser_protocol.pdl
++++ b/third_party/blink/public/devtools_protocol/browser_protocol.pdl
+@@ -5035,6 +5035,8 @@ experimental domain LayerTree
+       optional number scrollX
+       # Scroll offset Y
+       optional number scrollY
++      # Effective layer opacity for client-side compositing
++      optional number opacity
+ 
+   # Array of timings, one per paint step.
+   type PaintProfile extends array of number
+diff --git a/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc b/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
+index cc536126d54f103732abca2b89bad59010382e37..99acef75c9388fe589ddd64214445d4bb6b5dff7 100644
+--- a/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
++++ b/third_party/blink/renderer/core/inspector/inspector_layer_tree_agent.cc
+@@ -277,6 +277,13 @@ static std::unique_ptr<protocol::LayerTree::Layer> BuildObjectForLayer(
+     layer_object->setScrollX(scrollOffset.x());
+     layer_object->setScrollY(scrollOffset.y());
+   }
++  auto effectTreeIndex = layer->effect_tree_index();
++  if (effectTreeIndex != cc::kInvalidNodeId) {
++    const cc::EffectTree& effectTree =
++        root->layer_tree_host()->property_trees()->effect_tree();
++    const cc::EffectNode* effect_node = effectTree.Node(effectTreeIndex);
++    layer_object->setOpacity(effectTree.EffectiveOpacity(effect_node));
++  }
+   return layer_object;
+ }
+ 
